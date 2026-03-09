@@ -54,7 +54,10 @@
       <div class="card">
         <h3>接口配置</h3>
         <input id="apiBase" placeholder="后端地址，例如：https://your-api.example.com" />
-        <p class="muted">GitHub Pages 是静态站点，必须填写你部署的后端地址。</p>
+        <div style="margin-top:10px;">
+          <input id="apiToken" type="password" placeholder="接口令牌（对应服务端 SCRIPT_CLUSTER_TOKEN）" />
+        </div>
+        <p class="muted">GitHub Pages 是静态站点，必须填写你部署的后端地址。建议同时启用接口令牌。</p>
       </div>
 
       <div class="card">
@@ -90,6 +93,7 @@
     var STORE_KEY = 'script_cluster_store_v1';
     var PROMPT_KEY = 'script_cluster_default_prompt_v1';
     var API_BASE_KEY = 'script_cluster_api_base_v1';
+    var API_TOKEN_KEY = 'script_cluster_api_token_v1';
     var state = { scripts: [], activeId: '' };
 
     function slugify(value) {
@@ -101,6 +105,7 @@
       if (!state.scripts) state.scripts = [];
       document.getElementById('defaultSystemPrompt').value = localStorage.getItem(PROMPT_KEY) || document.getElementById('defaultSystemPrompt').value;
       document.getElementById('apiBase').value = localStorage.getItem(API_BASE_KEY) || '';
+      document.getElementById('apiToken').value = localStorage.getItem(API_TOKEN_KEY) || '';
       renderScripts();
       renderActive();
     }
@@ -155,17 +160,21 @@
       var instruction = (document.getElementById('instruction').value || '').trim();
       var system_prompt = (document.getElementById('defaultSystemPrompt').value || '').trim();
       var apiBase = (document.getElementById('apiBase').value || '').trim().replace(/\/$/, '');
+      var apiToken = (document.getElementById('apiToken').value || '').trim();
       if (!script_text) return alert('请先输入剧本文本');
       if (!apiBase) return alert('请先填写后端地址（API Base）');
       localStorage.setItem(API_BASE_KEY, apiBase);
+      localStorage.setItem(API_TOKEN_KEY, apiToken);
 
       var btn = document.getElementById('sendBtn');
       btn.disabled = true;
       btn.textContent = '发送中...';
       try {
+        var headers = { 'Content-Type': 'application/json' };
+        if (apiToken) headers['X-API-Token'] = apiToken;
         var resp = await fetch(apiBase + '/api/script-chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify({ title: title, script_id: script_id, script_text: script_text, instruction: instruction, system_prompt: system_prompt })
         });
         var raw = await resp.text();

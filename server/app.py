@@ -10,6 +10,7 @@ from urllib import request
 ARK_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 MODEL = os.getenv("ARK_MODEL", "doubao-seed-2-0-mini-260215")
 API_KEY = os.getenv("ARK_API_KEY", "").strip()
+ACCESS_TOKEN = os.getenv("SCRIPT_CLUSTER_TOKEN", "").strip()
 DATA_DIR = Path(os.getenv("SCRIPT_CLUSTER_DATA_DIR", "server/data"))
 
 
@@ -82,6 +83,12 @@ class Handler(BaseHTTPRequestHandler):
         if not API_KEY:
             self._send(500, {"error": "missing_ark_api_key_env", "hint": "set ARK_API_KEY in server env"})
             return
+
+        if ACCESS_TOKEN:
+            req_token = (self.headers.get("X-API-Token") or "").strip()
+            if req_token != ACCESS_TOKEN:
+                self._send(401, {"error": "unauthorized", "hint": "missing or invalid X-API-Token"})
+                return
 
         if self.path == "/api/ai-review":
             self.handle_ai_review()
