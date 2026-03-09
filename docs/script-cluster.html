@@ -37,6 +37,7 @@
     <aside class="side">
       <h2>剧本聚类</h2>
       <p class="muted">按剧本分组管理请求与回复</p>
+      <button id="refreshList" class="ghost" style="margin-bottom:10px;">刷新列表</button>
       <div id="scriptList"></div>
     </aside>
     <main class="main">
@@ -51,14 +52,6 @@
         </div>
       </div>
 
-      <div class="card">
-        <h3>接口配置</h3>
-        <input id="apiBase" placeholder="后端地址，例如：https://your-api.example.com" />
-        <div style="margin-top:10px;">
-          <input id="apiToken" type="password" placeholder="接口令牌（对应服务端 SCRIPT_CLUSTER_TOKEN）" />
-        </div>
-        <p class="muted">GitHub Pages 是静态站点，必须填写你部署的后端地址。建议同时启用接口令牌。</p>
-      </div>
 
       <div class="card">
         <h3>新建/更新剧本请求</h3>
@@ -90,29 +83,11 @@
   </div>
 
   <script>
-    var STORE_KEY = 'script_cluster_store_v1';
     var PROMPT_KEY = 'script_cluster_default_prompt_v1';
-    var API_BASE_KEY = 'script_cluster_api_base_v1';
-    var API_TOKEN_KEY = 'script_cluster_api_token_v1';
-    var state = { scripts: [], activeId: '' };
+    var state = { groups: [], activeId: '', repliesByScript: {} };
 
     function slugify(value) {
       return (value || '').trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'script';
-    }
-
-    function loadState() {
-      try { state = JSON.parse(localStorage.getItem(STORE_KEY) || '{"scripts":[],"activeId":""}'); } catch (_) {}
-      if (!state.scripts) state.scripts = [];
-      document.getElementById('defaultSystemPrompt').value = localStorage.getItem(PROMPT_KEY) || document.getElementById('defaultSystemPrompt').value;
-      var savedBase = localStorage.getItem(API_BASE_KEY) || '';
-      document.getElementById('apiBase').value = savedBase || window.location.origin;
-      document.getElementById('apiToken').value = localStorage.getItem(API_TOKEN_KEY) || '';
-      renderScripts();
-      renderActive();
-    }
-
-    function saveState() {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
     }
 
     function savePrompt() {
@@ -120,38 +95,51 @@
       alert('默认提示词已保存');
     }
 
-    function upsertScript(item) {
-      var i = state.scripts.findIndex(function (x) { return x.script_id === item.script_id; });
-      if (i >= 0) state.scripts[i] = item;
-      else state.scripts.unshift(item);
-      state.activeId = item.script_id;
-      saveState();
+    async function loadGroups() {
+      var resp = await fetch('/api/script-groups');
+      var data = await resp.json();
+      state.groups = (data && data.groups) || [];
+      if (!state.activeId && state.groups.length) state.activeId = state.groups[0].script_id;
       renderScripts();
+      if (state.activeId) await loadReplies(state.activeId);
+      else renderActive();
+    }
+
+    async function loadReplies(scriptId) {
+      var resp = await fetch('/api/script-replies?script_id=' + encodeURIComponent(scriptId) + '&limit=50');
+      var data = await resp.json();
+      state.repliesByScript[scriptId] = (data && data.replies) || [];
       renderActive();
     }
 
     function renderScripts() {
       var list = document.getElementById('scriptList');
       list.innerHTML = '';
-      state.scripts.forEach(function (s) {
+      state.groups.forEach(function (s) {
         var div = document.createElement('div');
         div.className = 'script-item' + (state.activeId === s.script_id ? ' active' : '');
-        div.innerHTML = '<div><b>' + s.title + '</b></div><div class="muted mono">' + s.script_id + '</div><div class="muted">回复数：' + (s.replies || []).length + '</div>';
-        div.onclick = function () { state.activeId = s.script_id; saveState(); renderScripts(); renderActive(); };
+        div.innerHTML = '<div><b>' + (s.title || s.script_id) + '</b></div><div class="muted mono">' + s.script_id + '</div><div class="muted">回复数：' + (s.count || 0) + '</div>';
+        div.onclick = async function () { state.activeId = s.script_id; renderScripts(); await loadReplies(s.script_id); };
         list.appendChild(div);
       });
     }
 
     function renderActive() {
-      var s = state.scripts.find(function (x) { return x.script_id === state.activeId; });
-      if (!s || !s.replies || !s.replies.length) {
-        document.getElementById('meta').textContent = '尚未发送';
+      var scriptId = state.activeId;
+      var replies = state.repliesByScript[scriptId] || [];
+      if (!scriptId || !replies.length) {
+        document.getElementById('meta').textContent = '暂无历史回复';
         document.getElementById('reply').textContent = '';
         return;
       }
-      var r = s.replies[s.replies.length - 1];
-      document.getElementById('meta').textContent = '剧本：' + s.title + ' | 时间：' + r.time + ' | 文件：' + (r.saved_file || '-');
-      document.getElementById('reply').textContent = r.reply;
+      var r = replies[0];
+      document.getElementById('meta').textContent = '剧本ID：' + scriptId + ' | 时间：' + (r.time || '-') + ' | 文件：' + (r.saved_file || '-');
+      document.getElementById('reply').textContent = r.reply_preview || '请在文件中查看完整回复：' + (r.saved_file || '-');
+    }
+
+    function loadState() {
+      document.getElementById('defaultSystemPrompt').value = localStorage.getItem(PROMPT_KEY) || document.getElementById('defaultSystemPrompt').value;
+      loadGroups().catch(function () { renderActive(); });
     }
 
     async function sendScript() {
@@ -160,19 +148,14 @@
       var script_text = (document.getElementById('scriptText').value || '').trim();
       var instruction = (document.getElementById('instruction').value || '').trim();
       var system_prompt = (document.getElementById('defaultSystemPrompt').value || '').trim();
-      var apiBase = (document.getElementById('apiBase').value || '').trim().replace(/\/$/, '');
-      var apiToken = (document.getElementById('apiToken').value || '').trim();
+      var apiBase = window.location.origin;
       if (!script_text) return alert('请先输入剧本文本');
-      if (!apiBase) return alert('请先填写后端地址（API Base）');
-      localStorage.setItem(API_BASE_KEY, apiBase);
-      localStorage.setItem(API_TOKEN_KEY, apiToken);
 
       var btn = document.getElementById('sendBtn');
       btn.disabled = true;
       btn.textContent = '发送中...';
       try {
         var headers = { 'Content-Type': 'application/json' };
-        if (apiToken) headers['X-API-Token'] = apiToken;
         var resp = await fetch(apiBase + '/api/script-chat', {
           method: 'POST',
           headers: headers,
@@ -186,12 +169,10 @@
         if (!resp.ok || !data.ok) {
           throw new Error((data && (data.detail || data.error)) || 'request failed');
         }
-        var old = state.scripts.find(function (x) { return x.script_id === script_id; }) || { script_id: script_id, title: title, script_text: script_text, replies: [] };
-        old.title = title;
-        old.script_text = script_text;
-        old.replies = old.replies || [];
-        old.replies.push({ time: new Date().toLocaleString(), reply: data.reply || '', saved_file: data.saved_file || '' });
-        upsertScript(old);
+        document.getElementById('meta').textContent = '剧本：' + title + ' | 时间：' + new Date().toLocaleString() + ' | 文件：' + (data.saved_file || '-');
+        document.getElementById('reply').textContent = data.reply || '';
+        state.activeId = script_id;
+        await loadGroups();
       } catch (e) {
         alert('发送失败：' + (e.message || e));
       } finally {
@@ -211,6 +192,7 @@
     document.getElementById('saveDefaultPrompt').onclick = savePrompt;
     document.getElementById('sendBtn').onclick = sendScript;
     document.getElementById('clearBtn').onclick = clearInput;
+    document.getElementById('refreshList').onclick = function () { loadGroups(); };
     document.getElementById('scriptFile').addEventListener('change', function (e) {
       var file = (e.target.files || [])[0];
       if (!file) return;

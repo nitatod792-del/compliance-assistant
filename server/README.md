@@ -7,7 +7,8 @@ This server proxies requests to Volcengine ARK, so API keys stay server-side.
 ```bash
 export ARK_API_KEY='your_key_here'
 export ARK_MODEL='doubao-seed-2-0-mini-260215'
-export SCRIPT_CLUSTER_TOKEN='replace_with_random_token'
+# Optional: enable token protection for APIs
+# export SCRIPT_CLUSTER_TOKEN='replace_with_random_token'
 python3 server/app.py
 ```
 
@@ -48,3 +49,13 @@ When `SCRIPT_CLUSTER_TOKEN` is set, clients must send header `X-API-Token`.
 Response includes `reply` and `saved_file`.
 
 Saved files are written to `server/data/<script_id>/<timestamp>-reply.md`.
+
+### 3) Script groups (for management UI)
+
+`GET /api/script-groups`
+
+### 4) Script replies list (for management UI)
+
+`GET /api/script-replies?script_id=<id>&limit=50`
+
+Index data is tracked in `server/data/replies-index.jsonl`.

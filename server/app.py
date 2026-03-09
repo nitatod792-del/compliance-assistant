@@ -6,13 +6,14 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib import request
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ARK_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 MODEL = os.getenv("ARK_MODEL", "doubao-seed-2-0-mini-260215")
 API_KEY = os.getenv("ARK_API_KEY", "").strip()
 ACCESS_TOKEN = os.getenv("SCRIPT_CLUSTER_TOKEN", "").strip()
 DATA_DIR = Path(os.getenv("SCRIPT_CLUSTER_DATA_DIR", "server/data"))
+INDEX_FILE = DATA_DIR / "replies-index.jsonl"
 SCRIPT_PAGE = Path("docs/script-cluster.html")
 
 
@@ -47,15 +48,16 @@ def call_ark(messages: list, temperature: float = 0.2, json_output: bool = False
     return content or ""
 
 
-def save_script_reply(script_id: str, title: str, script_text: str, system_prompt: str, reply: str) -> str:
+def save_script_reply(script_id: str, title: str, script_text: str, system_prompt: str, reply: str) -> dict:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     folder = DATA_DIR / slugify(script_id or title)
     folder.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    now = datetime.now()
+    ts = now.strftime("%Y%m%d-%H%M%S")
     out_file = folder / f"{ts}-reply.md"
     content = (
         f"# Script Reply\n\n"
-        f"- time: {datetime.now().isoformat()}\n"
+        f"- time: {now.isoformat()}\n"
         f"- script_id: {script_id}\n"
         f"- title: {title}\n\n"
         f"## System Prompt\n\n{system_prompt}\n\n"
@@ -63,7 +65,53 @@ def save_script_reply(script_id: str, title: str, script_text: str, system_promp
         f"## Model Reply\n\n{reply}\n"
     )
     out_file.write_text(content, encoding="utf-8")
-    return str(out_file)
+    row = {
+        "time": now.isoformat(),
+        "script_id": script_id,
+        "title": title,
+        "saved_file": str(out_file),
+        "reply_preview": reply[:160],
+    }
+    with INDEX_FILE.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return row
+
+
+def list_groups() -> list:
+    if not INDEX_FILE.exists():
+        return []
+    groups = {}
+    for line in INDEX_FILE.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        sid = row.get("script_id", "")
+        g = groups.get(sid, {"script_id": sid, "title": row.get("title", sid), "count": 0, "last_time": ""})
+        g["count"] += 1
+        g["last_time"] = max(g.get("last_time", ""), row.get("time", ""))
+        groups[sid] = g
+    return sorted(groups.values(), key=lambda x: x.get("last_time", ""), reverse=True)
+
+
+def list_replies(script_id: str = "", limit: int = 100) -> list:
+    if not INDEX_FILE.exists():
+        return []
+    rows = []
+    for line in INDEX_FILE.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if script_id and row.get("script_id") != script_id:
+            continue
+        rows.append(row)
+    rows.sort(key=lambda x: x.get("time", ""), reverse=True)
+    return rows[:limit]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -96,6 +144,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/health":
             self._send(200, {"ok": True, "model": MODEL})
+            return
+        if parsed.path == "/api/script-groups":
+            self._send(200, {"ok": True, "groups": list_groups()})
+            return
+        if parsed.path == "/api/script-replies":
+            q = parse_qs(parsed.query or "")
+            sid = (q.get("script_id") or [""])[0]
+            try:
+                limit = int((q.get("limit") or ["100"])[0])
+            except ValueError:
+                limit = 100
+            self._send(200, {"ok": True, "replies": list_replies(script_id=sid, limit=max(1, min(limit, 500)))})
             return
         self.send_error(404, "not found")
 
@@ -176,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                 ],
                 temperature=0.3,
             )
-            file_path = save_script_reply(script_id, title, script_text, system_prompt, reply)
+            row = save_script_reply(script_id, title, script_text, system_prompt, reply)
             self._send(
                 200,
                 {
@@ -184,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
                     "script_id": script_id,
                     "title": title,
                     "reply": reply,
-                    "saved_file": file_path,
+                    "saved_file": row.get("saved_file", ""),
                 },
             )
         except Exception as e:
