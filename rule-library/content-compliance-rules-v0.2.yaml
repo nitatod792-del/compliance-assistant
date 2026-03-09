@@ -1,0 +1,84 @@
+{
+  "version": "0.2",
+  "updated_at": "2026-03-09T09:42:00+08:00",
+  "severity_order": ["P0", "P1", "P2", "P3"],
+  "action_order": ["reject", "restrict", "downgrade", "revise", "pass"],
+  "rules": [
+    {
+      "rule_id": "CR-001",
+      "category": "违法交易引导",
+      "severity": "P0",
+      "patterns": ["违禁品", "代开发票", "加微信交易", "暗网购买"],
+      "reason_code": "ILLEGAL_TRANSACTION_GUIDE",
+      "fix_suggestion": "删除违法交易导向语句，保留合规信息说明。",
+      "action": "reject"
+    },
+    {
+      "rule_id": "CR-002",
+      "category": "暴力伤害煽动",
+      "severity": "P0",
+      "patterns": ["教你伤人", "如何报复", "动手教程"],
+      "reason_code": "VIOLENCE_INCITEMENT",
+      "fix_suggestion": "移除煽动伤害内容，替换为理性沟通或求助建议。",
+      "action": "reject"
+    },
+    {
+      "rule_id": "CR-003",
+      "category": "仇恨歧视表达",
+      "severity": "P1",
+      "patterns": ["赶走某群体", "某群体都该", "歧视性称呼"],
+      "reason_code": "HATE_DISCRIMINATION",
+      "fix_suggestion": "删除歧视性措辞，改为客观中性表达。",
+      "action": "restrict"
+    },
+    {
+      "rule_id": "CR-004",
+      "category": "医疗功效绝对化",
+      "severity": "P1",
+      "patterns": ["包治", "根治", "100%有效"],
+      "negation_terms": ["不", "并非", "不是", "杜绝", "避免"],
+      "allowlist_terms": ["不作疗效承诺", "仅供科普"],
+      "reason_code": "MEDICAL_ABSOLUTE_CLAIM",
+      "fix_suggestion": "删除绝对化疗效表述，补充适用条件与风险提示。",
+      "action": "restrict"
+    },
+    {
+      "rule_id": "CR-005",
+      "category": "金融收益承诺",
+      "severity": "P1",
+      "patterns": ["稳赚", "保本高收益", "无风险套利"],
+      "negation_terms": ["不", "并非", "不是", "拒绝", "警惕"],
+      "allowlist_terms": ["不构成投资建议", "市场有风险"],
+      "reason_code": "FINANCIAL_RETURN_GUARANTEE",
+      "fix_suggestion": "移除保本或稳赚承诺，增加风险披露与免责声明。",
+      "action": "restrict"
+    },
+    {
+      "rule_id": "CR-006",
+      "category": "轻度不当用语",
+      "severity": "P2",
+      "patterns": ["废物", "蠢货", "垃圾人"],
+      "reason_code": "MILD_ABUSIVE_LANGUAGE",
+      "fix_suggestion": "替换不当用语，保持礼貌和建设性表达。",
+      "action": "downgrade"
+    },
+    {
+      "rule_id": "CR-007",
+      "category": "信息不完整广告",
+      "severity": "P2",
+      "patterns": ["限时优惠", "立即下单", "私信领取"],
+      "reason_code": "INCOMPLETE_AD_DISCLOSURE",
+      "fix_suggestion": "补全活动规则、价格条件与有效期限后再发布。",
+      "action": "revise"
+    },
+    {
+      "rule_id": "CR-008",
+      "category": "正常信息表达",
+      "severity": "P3",
+      "patterns": [],
+      "reason_code": "COMPLIANT_CONTENT",
+      "fix_suggestion": "",
+      "action": "pass"
+    }
+  ]
+}

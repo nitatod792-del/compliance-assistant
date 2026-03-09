@@ -1,7 +1,5 @@
-# Compliance Assistant
+# Compliance Assistant Workspace
 
-GitHub Pages site for the compliance assistant miniapp and related materials.
-
-- Site entry: `docs/index.html`
-- Materials: `docs/materials/`
-- Working outputs: `docs/workspace/`
+- Hourly iteration log target: `output/compliance-assistant/hourly-progress.md`
+- 2-hour report source: summarize latest hourly updates in this folder.
+- Daily report source: summarize all progress and outcomes from this folder.
