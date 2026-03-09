@@ -13,6 +13,8 @@ python3 server/app.py
 
 Server listens on `http://localhost:8787` by default.
 
+If your NAT mapping points to this server, you can open the script page directly from the mapped URL (for example `https://<your-domain>/script-cluster.html`) and it will call same-origin APIs.
+
 ## API
 
 ### 1) Compliance review

@@ -6,12 +6,14 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib import request
+from urllib.parse import urlparse
 
 ARK_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 MODEL = os.getenv("ARK_MODEL", "doubao-seed-2-0-mini-260215")
 API_KEY = os.getenv("ARK_API_KEY", "").strip()
 ACCESS_TOKEN = os.getenv("SCRIPT_CLUSTER_TOKEN", "").strip()
 DATA_DIR = Path(os.getenv("SCRIPT_CLUSTER_DATA_DIR", "server/data"))
+SCRIPT_PAGE = Path("docs/script-cluster.html")
 
 
 def slugify(value: str) -> str:
@@ -78,6 +80,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self._send(200, {"ok": True})
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path in ("/", "/script-cluster", "/script-cluster.html"):
+            if not SCRIPT_PAGE.exists():
+                self.send_error(404, "script page not found")
+                return
+            body = SCRIPT_PAGE.read_text(encoding="utf-8").encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if parsed.path == "/health":
+            self._send(200, {"ok": True, "model": MODEL})
+            return
+        self.send_error(404, "not found")
 
     def do_POST(self):
         if not API_KEY:
