@@ -38,8 +38,17 @@
       <textarea id="singleText" placeholder="输入待审核文案..."></textarea>
       <div class="row" style="margin-top:10px;">
         <button id="runSingle">审核这条文案</button>
+        <button id="runSingleAi" class="secondary">提交AI审核（火山）</button>
+      </div>
+      <div class="row" style="margin-top:10px; align-items:center;">
+        <label class="muted"><input id="enableAi" type="checkbox" /> 同时提交AI审核</label>
+        <input id="arkModel" type="text" value="doubao-seed-1-6-flash-250715" style="flex:1; min-width:280px;" />
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <input id="arkApiKey" type="password" placeholder="输入火山ARK API Key（仅用于当前浏览器会话）" style="flex:1; min-width:280px;" />
       </div>
       <p id="singleResult" class="muted" style="margin-top:10px;"></p>
+      <p id="aiResult" class="muted" style="margin-top:10px;"></p>
     </div>
 
     <div class="card">
@@ -195,11 +204,66 @@
       document.getElementById('batchMeta').textContent = '总数: ' + total + ' | 命中: ' + hit + ' | 限制: ' + restrict + ' | 放行: ' + (total - restrict);
     }
 
-    document.getElementById('runSingle').addEventListener('click', function () {
+    async function runAiReview(text) {
+      var apiKey = (document.getElementById('arkApiKey').value || '').trim();
+      var model = (document.getElementById('arkModel').value || '').trim() || 'doubao-seed-1-6-flash-250715';
+      var resultEl = document.getElementById('aiResult');
+      if (!apiKey) {
+        resultEl.textContent = 'AI审核未执行：请先填写ARK API Key。';
+        return;
+      }
+      resultEl.textContent = 'AI审核中...';
+
+      var systemPrompt = '你是内容审核助手。请仅返回JSON：{"risk_level":"P0|P1|P2|P3","decision":"reject|restrict|revise|downgrade|pass","hit_points":["..."],"reason":"...","suggestion":"..."}';
+      var userPrompt = '请审核以下文案并给出结构化结论：\n' + text;
+
+      try {
+        var resp = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + apiKey
+          },
+          body: JSON.stringify({
+            model: model,
+            temperature: 0.1,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ]
+          })
+        });
+
+        if (!resp.ok) {
+          var errText = await resp.text();
+          resultEl.textContent = 'AI审核失败：' + resp.status + ' ' + errText;
+          return;
+        }
+        var data = await resp.json();
+        var content = (((data || {}).choices || [])[0] || {}).message ? data.choices[0].message.content : '';
+        var parsed = {};
+        try { parsed = JSON.parse(content || '{}'); } catch (e) { parsed = { raw: content }; }
+        resultEl.textContent = 'AI结果: ' + JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        resultEl.textContent = 'AI审核异常：' + String(e && e.message ? e.message : e);
+      }
+    }
+
+    document.getElementById('runSingle').addEventListener('click', async function () {
       var text = (document.getElementById('singleText').value || '').trim();
       if (!text) return;
       var r = evaluate('SINGLE', text);
-      document.getElementById('singleResult').textContent = '结果: ' + r.decision + ' | 风险: ' + r.risk_level + ' | 规则: ' + (r.hit_rule_ids.join(',') || '-') + ' | 证据: ' + r.evidence_snippet;
+      document.getElementById('singleResult').textContent = '规则结果: ' + r.decision + ' | 风险: ' + r.risk_level + ' | 规则: ' + (r.hit_rule_ids.join(',') || '-') + ' | 证据: ' + r.evidence_snippet;
+      if (document.getElementById('enableAi').checked) {
+        await runAiReview(text);
+      }
+    });
+
+    document.getElementById('runSingleAi').addEventListener('click', async function () {
+      var text = (document.getElementById('singleText').value || '').trim();
+      if (!text) return;
+      await runAiReview(text);
     });
 
     document.getElementById('loadSample').addEventListener('click', function () {
