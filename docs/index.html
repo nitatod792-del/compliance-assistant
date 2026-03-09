@@ -60,23 +60,51 @@
   <script>
     var RULES = [
       {
+        rule_id: 'CR-001', severity: 'P0', action: 'reject',
+        reason_code: 'ILLEGAL_TRANSACTION_GUIDE',
+        patterns: ['违禁品', '代开发票', '加微信交易', '暗网购买'],
+        negative_patterns: [],
+        fix_suggestion: '删除违法交易导向语句，保留合规信息说明。'
+      },
+      {
+        rule_id: 'CR-002', severity: 'P0', action: 'reject',
+        reason_code: 'VIOLENCE_INCITEMENT',
+        patterns: ['教你伤人', '如何报复', '动手教程'],
+        negative_patterns: [],
+        fix_suggestion: '移除煽动伤害内容，替换为理性沟通或求助建议。'
+      },
+      {
+        rule_id: 'CR-003', severity: 'P1', action: 'restrict',
+        reason_code: 'HATE_DISCRIMINATION',
+        patterns: ['赶走某群体', '某群体都该', '歧视性称呼'],
+        negative_patterns: [],
+        fix_suggestion: '删除歧视性措辞，改为客观中性表达。'
+      },
+      {
         rule_id: 'CR-004', severity: 'P1', action: 'restrict',
         reason_code: 'MEDICAL_ABSOLUTE_CLAIM',
-        patterns: ['包治百病', '100%有效', '根治', '药到病除'],
-        negative_patterns: ['不作疗效承诺', '仅供参考'],
+        patterns: ['包治', '根治', '100%有效'],
+        negative_patterns: ['不作疗效承诺', '仅供科普', '不是包治', '不保证疗效'],
         fix_suggestion: '去除绝对化疗效承诺，改为客观描述并补充风险提示。'
       },
       {
         rule_id: 'CR-005', severity: 'P1', action: 'restrict',
         reason_code: 'FINANCIAL_RETURN_GUARANTEE',
-        patterns: ['稳赚不赔', '保本高收益', '躺赚', '无风险高回报'],
-        negative_patterns: ['不是稳赚', '不保证收益', '仅作交流'],
+        patterns: ['稳赚', '保本高收益', '无风险套利'],
+        negative_patterns: ['不是稳赚', '不保证收益', '不构成投资建议', '市场有风险'],
         fix_suggestion: '删除收益保证类表述，补充投资风险与不确定性说明。'
       },
       {
-        rule_id: 'CR-007', severity: 'P2', action: 'restrict',
+        rule_id: 'CR-006', severity: 'P2', action: 'downgrade',
+        reason_code: 'MILD_ABUSIVE_LANGUAGE',
+        patterns: ['废物', '蠢货', '垃圾人'],
+        negative_patterns: [],
+        fix_suggestion: '替换不当用语，保持礼貌和建设性表达。'
+      },
+      {
+        rule_id: 'CR-007', severity: 'P2', action: 'revise',
         reason_code: 'INCOMPLETE_AD_DISCLOSURE',
-        patterns: ['私信领取名额', '扫码领取', '添加微信领取', '限时名额'],
+        patterns: ['私信领取', '扫码领取', '添加微信领取', '限时名额', '立即下单'],
         negative_patterns: [],
         fix_suggestion: '补充广告属性与完整披露信息，避免诱导式表达。'
       }
@@ -115,8 +143,17 @@
         });
       }
       var risk = 'P3', decision = 'pass';
-      if (hits.some(function(x){ return x.severity === 'P1'; })) { risk = 'P1'; decision = 'restrict'; }
-      else if (hits.some(function(x){ return x.severity === 'P2'; })) { risk = 'P2'; decision = 'restrict'; }
+      if (hits.length > 0) {
+        var sevRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
+        var actRank = { reject: 0, restrict: 1, downgrade: 2, revise: 3, pass: 4 };
+        hits.sort(function(a, b){
+          var s = sevRank[a.severity] - sevRank[b.severity];
+          if (s !== 0) return s;
+          return actRank[a.action] - actRank[b.action];
+        });
+        risk = hits[0].severity;
+        decision = hits[0].action;
+      }
       return {
         content_id: contentId,
         text: text,
