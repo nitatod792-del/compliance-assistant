@@ -1,22 +1,37 @@
 [
   {
     "content_id": "S-001",
+    "text_version": "v1",
     "text": "这个产品包治百病，100%有效，今天下单立减。"
   },
   {
     "content_id": "S-002",
+    "text_version": "v1",
     "text": "这是一个普通的产品体验分享，没有夸大宣传。"
   },
   {
     "content_id": "S-003",
+    "text_version": "v1",
     "text": "保本高收益项目，稳赚不赔，私信领取名额。"
   },
   {
     "content_id": "S-004",
+    "text_version": "v1",
     "text": "我们不是稳赚项目，也不提供保本高收益承诺，请理性决策。"
   },
   {
     "content_id": "S-005",
+    "text_version": "v1",
     "text": "本文仅供科普，不作疗效承诺，不是包治方案。"
+  },
+  {
+    "content_id": "S-006",
+    "text_version": "v1",
+    "text": "加入会员稳赚不赔，限时优惠。"
+  },
+  {
+    "content_id": "S-006",
+    "text_version": "v2",
+    "text": "加入会员享专属服务，活动规则详见页面说明。"
   }
 ]

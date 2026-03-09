@@ -106,3 +106,136 @@
 - 将规则文件改造为标准 YAML 语法，并在脚本中切换为 `yaml.safe_load` 解析。
 - 在台账行中增加 `rule_version` 字段，区分“同内容不同规则版本”的重审记录。
 - 增补 2 条“同 content_id 不同文本版本”样本，验证幂等策略与重审策略边界。
+
+## 2026-03-09 11:42 (Asia/Shanghai)
+### 本小时完成内容
+- 完成重审策略增强：升级 `output/compliance-assistant/automation/rule_hit_runner.py`，在自动审核结果中新增 `text_version` 与 `rule_version` 字段，并同步到报告、JSON记录、Markdown记录、台账追加链路。
+- 强化幂等键计算：`record_key` 从“内容+判定+命中规则”扩展为“`content_id + text_version + rule_version + decision + rule hits`”，避免同内容多版本复审被误判为重复。
+- 扩展样本集并验证边界：更新 `output/compliance-assistant/automation/sample-inputs.json`，新增同 `content_id=S-006` 的 `v1/v2` 双版本样本（一个违规、一个合规），并完成自动运行。
+- 产出最新验证结果：刷新 `output/compliance-assistant/automation/sample-run-report.md`、`output/compliance-assistant/automation/sample-review-records.json`、`output/compliance-assistant/automation/sample-review-records.md`，并自动追加 `output/compliance-assistant/review-log.md`。
+
+### 效果
+- “同内容不同文本版本”的复审场景可区分沉淀，台账不再因为 `content_id` 相同而丢失关键复审记录。
+- 报告可直接呈现 `content_id + text_version + rule_version` 三元信息，便于回溯“哪个文本版本在何规则版本下被拦截/放行”。
+- 本轮样本运行结果可复现：7 条样本中命中 3 条（42.9%），限制 3 条（42.9%），放行 4 条（57.1%）；`S-006 v1` 限制、`S-006 v2` 放行，符合预期。
+
+### 遗留问题
+- 规则文件仍为 JSON 兼容格式（`.yaml` 扩展名），尚未切换到标准 YAML 语法与 `yaml.safe_load` 解析链路。
+- 目前 `text_version` 依赖输入样本显式填写，尚未形成自动版本号策略（如 hash/时间戳）。
+- 台账历史旧记录格式（无 `text_version/rule_version`）与新格式并存，后续需要一次性归档或迁移说明。
+
+### 下一小时计划
+- 完成规则文件标准 YAML 化，并在脚本中切换解析器到 `yaml.safe_load`（保留失败回退提示）。
+- 增加 `text_hash` 字段作为自动版本辅助键，降低人工维护 `text_version` 成本。
+- 补一份“重审策略说明文档”（触发条件、幂等规则、版本字段解释）到 `output/compliance-assistant/docs/`，用于对齐审核员操作口径。
+
+## 2026-03-09 12:42 (Asia/Shanghai)
+### 本小时完成内容
+- 完成规则库标准 YAML 化：将 `output/compliance-assistant/rule-library/content-compliance-rules-v0.2.yaml` 从 JSON 兼容格式重写为真实 YAML 结构（列表缩进、键值语法、空数组/空字符串规范化）。
+- 升级规则加载链路：`output/compliance-assistant/automation/rule_hit_runner.py` 新增 `load_rules()`，优先使用 `yaml.safe_load` 解析，保留 JSON 回退与报错提示，兼容迁移期历史文件。
+- 补齐运行环境依赖并完成验证：安装 `PyYAML` 后执行自动化脚本，刷新 `sample-run-report.md`、`sample-review-records.json`、`sample-review-records.md`，并追加台账 `review-log.md`。
+
+### 效果
+- 规则配置正式进入 YAML 原生形态，后续可直接支持注释、分段维护和多人协作审阅，降低规则维护门槛。
+- 规则解析从“仅 JSON”升级为“YAML 优先 + JSON 兼容回退”，减少格式切换导致的运行中断风险。
+- 本轮自动化链路验证通过，说明 YAML 化后命中、判定、记录与台账沉淀流程仍可稳定运行。
+
+### 遗留问题
+- 运行依赖新增 `PyYAML`，尚未沉淀到项目级依赖说明（如 `requirements.txt`），新环境首次运行仍需手动安装。
+- 当前 JSON 回退虽保障兼容，但可能掩盖非标准 YAML 配置问题，后续应增加“严格模式”开关用于 CI 检查。
+- 规则版本仍为 `0.2`，建议在下一轮迭代发布 `0.3` 并明确变更日志。
+
+### 下一小时计划
+- 在 `output/compliance-assistant/automation/` 增加 `requirements.txt` 与一键运行说明，固化 `PyYAML` 依赖安装步骤。
+- 为 `rule_hit_runner.py` 增加 `strict_yaml` 选项（默认关闭，校验场景开启），避免回退掩盖格式错误。
+- 输出一份简短规则变更说明文档到 `output/compliance-assistant/docs/`，记录 YAML 化改造点与升级注意事项。
+
+## 2026-03-09 13:42 (Asia/Shanghai)
+### 本小时完成内容
+- 固化自动化运行依赖：新增 `output/compliance-assistant/automation/requirements.txt`，明确 `PyYAML` 版本范围，降低新环境首次运行门槛。
+- 升级规则解析流程：更新 `output/compliance-assistant/automation/rule_hit_runner.py`，新增 `--strict-yaml` 参数；开启后 YAML 解析失败将直接报错，不再回退 JSON。
+- 补充升级文档：新增 `output/compliance-assistant/docs/rule-yaml-upgrade-notes.md`，沉淀安装步骤、兼容/严格模式用法与发布前检查建议。
+- 完成严格模式验证：执行 `python3 output/compliance-assistant/automation/rule_hit_runner.py --strict-yaml`，刷新报告、审核记录与台账产物。
+
+### 效果
+- 规则校验链路从“运行成功优先”升级为“可选择严格校验优先”，可在发版前提前暴露 YAML 语法问题。
+- 依赖安装与运行方式文档化后，团队成员在新机器复现实验的成本更低。
+- 自动化产出链路在严格模式下验证通过，说明当前规则库已满足标准 YAML 解析要求。
+
+### 遗留问题
+- 当前严格模式仅通过命令行开关控制，尚未接入 CI/定时任务默认流程。
+- `requirements.txt` 仅覆盖 Python 依赖，尚未补充 Python 版本下限说明（如 3.10+）。
+- 规则发布流程仍缺少“语法校验 + 样本回归”一键脚本，人工执行步骤较多。
+
+### 下一小时计划
+- 新增一键校验脚本（如 `automation/run_checks.sh`），串联 `--strict-yaml` 运行与关键样本回归。
+- 在运行报告中增加“严格模式执行状态”字段，便于追踪每小时是否按校验标准执行。
+- 补充 `automation/README.md`，明确环境要求、安装命令、常见报错与排查路径。
+
+## 2026-03-09 14:42 (Asia/Shanghai)
+### 本小时完成内容
+- 新增一键校验脚本：`output/compliance-assistant/automation/run_checks.sh`，串联严格 YAML 校验与样本回归（内部执行 `rule_hit_runner.py --strict-yaml`）。
+- 补充自动化运行说明：`output/compliance-assistant/automation/README.md`，明确 Python 版本下限、依赖安装、标准/严格模式、常见报错排查。
+- 升级报告字段：更新 `output/compliance-assistant/automation/rule_hit_runner.py`，在 `sample-run-report.md` 摘要中新增“严格YAML模式（ON/OFF）”状态。
+- 完成一轮严格模式验证：执行 `bash output/compliance-assistant/automation/run_checks.sh`，刷新报告、审核记录与台账产物。
+
+### 效果
+- 校验流程从“手工多命令”收敛到“一条命令可复现”，降低小时巡检和发布前检查成本。
+- 每小时报告现在可直接看出是否按严格模式执行，提升合规校验可追踪性。
+- 本轮严格模式运行通过，结果稳定：7 条样本中命中 3 条（42.9%）、限制 3 条（42.9%）、放行 4 条（57.1%）。
+
+### 遗留问题
+- `run_checks.sh` 目前只覆盖固定样本回归，尚未支持自定义样本路径和多规则文件批量检查。
+- 一键脚本暂未输出机器可读状态文件（如 JSON），不利于后续接入 CI 门禁。
+- 规则版本仍为 `0.2`，尚未同步发布新的版本号与变更日志。
+
+### 下一小时计划
+- 为 `run_checks.sh` 增加参数化能力（`--samples`、`--rules`），支持多场景快速校验。
+- 新增机器可读检查结果文件（如 `automation/check-status.json`），沉淀 strict 模式执行状态与核心指标。
+- 输出 `rule-library` 的 `v0.3` 版本草案（含本轮流程增强说明）并补充最小变更日志。
+
+## 2026-03-09 15:42 (Asia/Shanghai)
+### 本小时完成内容
+- 完成校验脚本参数化：升级 `output/compliance-assistant/automation/run_checks.sh`，支持 `--rules`、`--samples`、`--status-out`，可按场景切换规则文件和样本集。
+- 新增机器可读状态产物：升级 `output/compliance-assistant/automation/rule_hit_runner.py`，增加 `--status-out` 参数并默认生成 `output/compliance-assistant/automation/check-status.json`。
+- 增加运行摘要结构化输出：在状态 JSON 中沉淀 `strict_yaml`、`rule_version`、命中率/限制率/放行率与 `ok` 状态，便于后续接入 CI 门禁。
+- 更新使用文档：`output/compliance-assistant/automation/README.md` 补充参数化示例与 `check-status.json` 产物说明。
+- 执行验证：运行 `bash output/compliance-assistant/automation/run_checks.sh`，成功刷新报告、审核记录、台账与状态 JSON。
+
+### 效果
+- 小时巡检从“仅人工读 Markdown 报告”升级为“可机读状态 + 人工可读报告”双通道，自动化集成可行性显著提升。
+- 同一校验脚本可覆盖不同规则版本与样本集，减少维护多套脚本的成本。
+- 本轮结果稳定，状态文件可直接作为后续流水线的输入信号（`ok=true` + 指标字段齐全）。
+
+### 遗留问题
+- `check-status.json` 当前仅输出成功态；异常场景（解析失败、样本缺失）的统一错误码与失败落盘格式尚未定义。
+- `run_checks.sh` 尚未支持多规则文件批量遍历（目前一次仅检查一组规则+样本）。
+- 规则版本仍为 `0.2`，尚未输出 `v0.3` 版本文件与变更日志。
+
+### 下一小时计划
+- 为状态文件补充失败态结构（`ok=false`、`error_code`、`error_message`），并在脚本异常时也落盘。
+- 产出 `output/compliance-assistant/rule-library/content-compliance-rules-v0.3.yaml` 草案及最小变更日志。
+- 为 `run_checks.sh` 增加批量模式参数（如 `--matrix <json>`）设计稿，评估多规则回归成本。
+
+## 2026-03-09 16:42 (Asia/Shanghai)
+### 本小时完成内容
+- 完成失败态状态文件落盘：升级 `output/compliance-assistant/automation/rule_hit_runner.py`，新增统一失败捕获与状态输出；异常时也会写入 `check-status.json`（或 `--status-out` 指定路径）。
+- 新增错误码标准化：状态文件支持 `ok`、`error_code`、`error_message` 字段；已覆盖 `FILE_NOT_FOUND`、`INVALID_JSON`、`RULE_PARSE_ERROR`、`INVALID_RULE_SCHEMA`、`UNKNOWN_ERROR`。
+- 保持成功态兼容：成功执行时继续输出原有 `summary` 指标，并补齐空错误字段，便于上游统一解析。
+- 更新使用文档：`output/compliance-assistant/automation/README.md` 补充状态文件成功/失败字段说明与错误码定义。
+- 执行验证：运行 `bash output/compliance-assistant/automation/run_checks.sh`（成功）；并用缺失样本路径做失败验证，确认脚本返回非 0 且状态文件可落盘。
+
+### 效果
+- 状态文件从“仅成功可读”升级为“成功/失败都可机读”，CI 或定时任务可直接依据 `ok` 与 `error_code` 做分支处理。
+- 排障效率提升：失败不再只看终端日志，状态文件保留标准错误信息，便于后续自动告警或聚合统计。
+- 对现有链路无破坏：严格模式回归仍可稳定产出报告、审核记录与台账。
+
+### 遗留问题
+- 当前 `error_code` 为脚本内静态映射，尚未形成跨脚本统一错误码字典。
+- 失败态 `summary` 目前为空对象，尚未细分“部分成功”场景（如报告生成成功但台账追加失败）。
+- `run_checks.sh` 仍是一组规则+样本单次执行，尚未支持批量矩阵回归。
+
+### 下一小时计划
+- 产出 `output/compliance-assistant/rule-library/content-compliance-rules-v0.3.yaml` 草案，并同步最小变更日志。
+- 设计并落地 `run_checks.sh` 批量模式入参（`--matrix <json>`）的最小可用版本，支持多规则/多样本组合回归。
+- 为失败态增加 `stage` 字段（如 `load_rules` / `load_samples` / `write_outputs`），进一步提升告警可定位性。
