@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>审核合规小助手 - Web测试页</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; background: #f7f8fa; color: #111; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 20px; }
+    .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    h2 { font-size: 16px; margin: 0 0 10px; }
+    textarea, input[type="file"] { width: 100%; box-sizing: border-box; }
+    textarea { min-height: 120px; border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    button { border: 0; border-radius: 8px; padding: 10px 14px; background: #2563eb; color: #fff; cursor: pointer; }
+    button.secondary { background: #374151; }
+    button.ghost { background: #6b7280; }
+    .muted { color: #666; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #eee; text-align: left; padding: 8px; vertical-align: top; }
+    .tag { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; color: #fff; }
+    .p1 { background: #dc2626; }
+    .p2 { background: #f59e0b; }
+    .p3 { background: #16a34a; }
+    .small { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>审核合规小助手（Web测试页）</h1>
+      <p class="muted">支持单条文案审核 + 批量JSON审核，输出风险等级、命中规则、证据片段、整改建议。</p>
+    </div>
+
+    <div class="card">
+      <h2>单条审核</h2>
+      <textarea id="singleText" placeholder="输入待审核文案..."></textarea>
+      <div class="row" style="margin-top:10px;">
+        <button id="runSingle">审核这条文案</button>
+      </div>
+      <p id="singleResult" class="muted" style="margin-top:10px;"></p>
+    </div>
+
+    <div class="card">
+      <h2>批量审核（JSON）</h2>
+      <p class="muted">格式：[{"content_id":"T-001","text":"..."}]</p>
+      <textarea id="batchText" placeholder='粘贴JSON数组'></textarea>
+      <div class="row" style="margin-top:10px;">
+        <input id="jsonFile" type="file" accept="application/json" />
+        <button id="loadSample" class="secondary">加载内置样本</button>
+        <button id="runBatch">批量审核</button>
+        <button id="downloadJson" class="ghost">导出结果JSON</button>
+      </div>
+      <p id="batchMeta" class="muted" style="margin-top:10px;"></p>
+      <div id="tableWrap"></div>
+    </div>
+  </div>
+
+  <script>
+    var RULES = [
+      {
+        rule_id: 'CR-004', severity: 'P1', action: 'restrict',
+        reason_code: 'MEDICAL_ABSOLUTE_CLAIM',
+        patterns: ['包治百病', '100%有效', '根治', '药到病除'],
+        negative_patterns: ['不作疗效承诺', '仅供参考'],
+        fix_suggestion: '去除绝对化疗效承诺，改为客观描述并补充风险提示。'
+      },
+      {
+        rule_id: 'CR-005', severity: 'P1', action: 'restrict',
+        reason_code: 'FINANCIAL_RETURN_GUARANTEE',
+        patterns: ['稳赚不赔', '保本高收益', '躺赚', '无风险高回报'],
+        negative_patterns: ['不是稳赚', '不保证收益', '仅作交流'],
+        fix_suggestion: '删除收益保证类表述，补充投资风险与不确定性说明。'
+      },
+      {
+        rule_id: 'CR-007', severity: 'P2', action: 'restrict',
+        reason_code: 'INCOMPLETE_AD_DISCLOSURE',
+        patterns: ['私信领取名额', '扫码领取', '添加微信领取', '限时名额'],
+        negative_patterns: [],
+        fix_suggestion: '补充广告属性与完整披露信息，避免诱导式表达。'
+      }
+    ];
+
+    var lastBatchResult = [];
+
+    function hasAny(text, arr) {
+      for (var i = 0; i < arr.length; i++) if (text.indexOf(arr[i]) >= 0) return arr[i];
+      return '';
+    }
+
+    function findSnippet(text, kw) {
+      if (!kw) return '-';
+      var idx = text.indexOf(kw);
+      if (idx < 0) return '-';
+      var s = Math.max(0, idx - 12), e = Math.min(text.length, idx + kw.length + 12);
+      return text.slice(s, e);
+    }
+
+    function evaluate(contentId, text) {
+      var hits = [];
+      for (var i = 0; i < RULES.length; i++) {
+        var r = RULES[i];
+        var neg = hasAny(text, r.negative_patterns || []);
+        if (neg) continue;
+        var hitKw = hasAny(text, r.patterns || []);
+        if (!hitKw) continue;
+        hits.push({
+          rule_id: r.rule_id,
+          severity: r.severity,
+          action: r.action,
+          reason_code: r.reason_code,
+          fix_suggestion: r.fix_suggestion,
+          evidence_snippet: findSnippet(text, hitKw)
+        });
+      }
+      var risk = 'P3', decision = 'pass';
+      if (hits.some(function(x){ return x.severity === 'P1'; })) { risk = 'P1'; decision = 'restrict'; }
+      else if (hits.some(function(x){ return x.severity === 'P2'; })) { risk = 'P2'; decision = 'restrict'; }
+      return {
+        content_id: contentId,
+        text: text,
+        hit_rule_ids: hits.map(function(x){return x.rule_id;}),
+        reason_codes: hits.map(function(x){return x.reason_code;}),
+        fix_suggestions: hits.map(function(x){return x.fix_suggestion;}),
+        evidence_snippet: hits.map(function(x){return x.evidence_snippet;}).join(' | ') || '-',
+        risk_level: risk,
+        decision: decision
+      };
+    }
+
+    function riskTag(r) {
+      var cls = r === 'P1' ? 'p1' : (r === 'P2' ? 'p2' : 'p3');
+      return '<span class="tag ' + cls + '">' + r + '</span>';
+    }
+
+    function renderTable(rows) {
+      var wrap = document.getElementById('tableWrap');
+      if (!rows.length) { wrap.innerHTML = '<p class="muted">暂无结果</p>'; return; }
+      var html = '<table><thead><tr><th>content_id</th><th>risk</th><th>decision</th><th>hit_rule_ids</th><th>reason_codes</th><th>evidence</th></tr></thead><tbody>';
+      for (var i = 0; i < rows.length; i++) {
+        var x = rows[i];
+        html += '<tr>' +
+          '<td>' + x.content_id + '</td>' +
+          '<td>' + riskTag(x.risk_level) + '</td>' +
+          '<td>' + x.decision + '</td>' +
+          '<td class="small">' + (x.hit_rule_ids.join(',') || '-') + '</td>' +
+          '<td class="small">' + (x.reason_codes.join(',') || '-') + '</td>' +
+          '<td class="small">' + x.evidence_snippet.replace(/</g, '&lt;') + '</td>' +
+          '</tr>';
+      }
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+
+      var total = rows.length;
+      var hit = rows.filter(function(x){return x.hit_rule_ids.length > 0;}).length;
+      var restrict = rows.filter(function(x){return x.decision === 'restrict';}).length;
+      document.getElementById('batchMeta').textContent = '总数: ' + total + ' | 命中: ' + hit + ' | 限制: ' + restrict + ' | 放行: ' + (total - restrict);
+    }
+
+    document.getElementById('runSingle').addEventListener('click', function () {
+      var text = (document.getElementById('singleText').value || '').trim();
+      if (!text) return;
+      var r = evaluate('SINGLE', text);
+      document.getElementById('singleResult').textContent = '结果: ' + r.decision + ' | 风险: ' + r.risk_level + ' | 规则: ' + (r.hit_rule_ids.join(',') || '-') + ' | 证据: ' + r.evidence_snippet;
+    });
+
+    document.getElementById('loadSample').addEventListener('click', function () {
+      var sample = [
+        { content_id: 'T-001', text: '这款产品包治百病，100%有效，三天见效。' },
+        { content_id: 'T-002', text: '本项目保本高收益，稳赚不赔，名额有限。' },
+        { content_id: 'T-003', text: '我们不作疗效承诺，以上仅为体验分享。' },
+        { content_id: 'T-004', text: '这是一次普通产品介绍，欢迎理性了解。' },
+        { content_id: 'T-005', text: '扫码私信领取福利，详情见主页。' },
+        { content_id: 'T-006', text: '不是稳赚，只是分享投资思路，请理性判断。' }
+      ];
+      document.getElementById('batchText').value = JSON.stringify(sample, null, 2);
+    });
+
+    document.getElementById('jsonFile').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () { document.getElementById('batchText').value = String(reader.result || ''); };
+      reader.readAsText(f, 'utf-8');
+    });
+
+    document.getElementById('runBatch').addEventListener('click', function () {
+      var raw = (document.getElementById('batchText').value || '').trim();
+      if (!raw) return;
+      var arr;
+      try { arr = JSON.parse(raw); } catch (e) { alert('JSON格式错误'); return; }
+      if (!Array.isArray(arr)) { alert('需为JSON数组'); return; }
+      lastBatchResult = arr.map(function (x, i) { return evaluate(x.content_id || ('ROW-' + (i + 1)), String(x.text || '')); });
+      renderTable(lastBatchResult);
+    });
+
+    document.getElementById('downloadJson').addEventListener('click', function () {
+      if (!lastBatchResult.length) return;
+      var blob = new Blob([JSON.stringify(lastBatchResult, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'compliance-review-results.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  </script>
+</body>
+</html>
