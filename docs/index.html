@@ -42,10 +42,7 @@
       </div>
       <div class="row" style="margin-top:10px; align-items:center;">
         <label class="muted"><input id="enableAi" type="checkbox" /> 同时提交AI审核</label>
-        <input id="arkModel" type="text" value="doubao-seed-1-6-flash-250715" style="flex:1; min-width:280px;" />
-      </div>
-      <div class="row" style="margin-top:10px;">
-        <input id="arkApiKey" type="password" placeholder="输入火山ARK API Key（仅用于当前浏览器会话）" style="flex:1; min-width:280px;" />
+        <span class="muted">AI审核由系统后端代理调用（不在页面填写密钥）</span>
       </div>
       <p id="singleResult" class="muted" style="margin-top:10px;"></p>
       <p id="aiResult" class="muted" style="margin-top:10px;"></p>
@@ -205,34 +202,14 @@
     }
 
     async function runAiReview(text) {
-      var apiKey = (document.getElementById('arkApiKey').value || '').trim();
-      var model = (document.getElementById('arkModel').value || '').trim() || 'doubao-seed-1-6-flash-250715';
       var resultEl = document.getElementById('aiResult');
-      if (!apiKey) {
-        resultEl.textContent = 'AI审核未执行：请先填写ARK API Key。';
-        return;
-      }
       resultEl.textContent = 'AI审核中...';
 
-      var systemPrompt = '你是内容审核助手。请仅返回JSON：{"risk_level":"P0|P1|P2|P3","decision":"reject|restrict|revise|downgrade|pass","hit_points":["..."],"reason":"...","suggestion":"..."}';
-      var userPrompt = '请审核以下文案并给出结构化结论：\n' + text;
-
       try {
-        var resp = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+        var resp = await fetch('/api/ai-review', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-          },
-          body: JSON.stringify({
-            model: model,
-            temperature: 0.1,
-            response_format: { type: 'json_object' },
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ]
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text })
         });
 
         if (!resp.ok) {
@@ -240,13 +217,11 @@
           resultEl.textContent = 'AI审核失败：' + resp.status + ' ' + errText;
           return;
         }
+
         var data = await resp.json();
-        var content = (((data || {}).choices || [])[0] || {}).message ? data.choices[0].message.content : '';
-        var parsed = {};
-        try { parsed = JSON.parse(content || '{}'); } catch (e) { parsed = { raw: content }; }
-        resultEl.textContent = 'AI结果: ' + JSON.stringify(parsed, null, 2);
+        resultEl.textContent = 'AI结果: ' + JSON.stringify((data || {}).ai || data, null, 2);
       } catch (e) {
-        resultEl.textContent = 'AI审核异常：' + String(e && e.message ? e.message : e);
+        resultEl.textContent = 'AI审核异常：' + String(e && e.message ? e.message : e) + '（请确认后端 /api/ai-review 已启动）';
       }
     }
 
