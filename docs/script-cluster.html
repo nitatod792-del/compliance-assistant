@@ -52,6 +52,12 @@
       </div>
 
       <div class="card">
+        <h3>接口配置</h3>
+        <input id="apiBase" placeholder="后端地址，例如：https://your-api.example.com" />
+        <p class="muted">GitHub Pages 是静态站点，必须填写你部署的后端地址。</p>
+      </div>
+
+      <div class="card">
         <h3>新建/更新剧本请求</h3>
         <div class="row">
           <input id="scriptTitle" placeholder="剧本标题（如：雨夜追凶）" />
@@ -83,6 +89,7 @@
   <script>
     var STORE_KEY = 'script_cluster_store_v1';
     var PROMPT_KEY = 'script_cluster_default_prompt_v1';
+    var API_BASE_KEY = 'script_cluster_api_base_v1';
     var state = { scripts: [], activeId: '' };
 
     function slugify(value) {
@@ -93,6 +100,7 @@
       try { state = JSON.parse(localStorage.getItem(STORE_KEY) || '{"scripts":[],"activeId":""}'); } catch (_) {}
       if (!state.scripts) state.scripts = [];
       document.getElementById('defaultSystemPrompt').value = localStorage.getItem(PROMPT_KEY) || document.getElementById('defaultSystemPrompt').value;
+      document.getElementById('apiBase').value = localStorage.getItem(API_BASE_KEY) || '';
       renderScripts();
       renderActive();
     }
@@ -146,18 +154,25 @@
       var script_text = (document.getElementById('scriptText').value || '').trim();
       var instruction = (document.getElementById('instruction').value || '').trim();
       var system_prompt = (document.getElementById('defaultSystemPrompt').value || '').trim();
+      var apiBase = (document.getElementById('apiBase').value || '').trim().replace(/\/$/, '');
       if (!script_text) return alert('请先输入剧本文本');
+      if (!apiBase) return alert('请先填写后端地址（API Base）');
+      localStorage.setItem(API_BASE_KEY, apiBase);
 
       var btn = document.getElementById('sendBtn');
       btn.disabled = true;
       btn.textContent = '发送中...';
       try {
-        var resp = await fetch('/api/script-chat', {
+        var resp = await fetch(apiBase + '/api/script-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: title, script_id: script_id, script_text: script_text, instruction: instruction, system_prompt: system_prompt })
         });
-        var data = await resp.json();
+        var raw = await resp.text();
+        var data = {};
+        try { data = JSON.parse(raw || '{}'); } catch (_) {
+          throw new Error('后端返回的不是JSON，请检查 API Base 是否正确，当前响应片段：' + (raw || '').slice(0, 80));
+        }
         if (!resp.ok || !data.ok) {
           throw new Error((data && (data.detail || data.error)) || 'request failed');
         }
